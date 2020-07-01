@@ -2,9 +2,7 @@
 
 A lightweight JSON parser and serializer for Qt5 by Calin Culianu <calin.culianu@gmail.com>.
 
-I initially wrote this code for use in my [Fulcrum](https://github.com/cculianu/Fulcrum) server software. However, I decided to also release this code as a stand-alone library in case any other people writing applications with Qt were also as exasperated as I was by Qt's JSON quirks.
-
-So, I am releasing this code to the world in the hope that it may be found useful by others.
+I initially wrote this code for use in my [Fulcrum](https://github.com/cculianu/Fulcrum) server software. However, I decided to also release this code as a stand-alone library.
 
 ### FAQ
 
