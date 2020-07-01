@@ -2,12 +2,13 @@
 
 A lightweight JSON parser and serializer for Qt5 by Calin Culianu <calin.culianu@gmail.com>.
 
-I initially wrote this code for use in my [Fulcrum](https://github.com/cculianu/Fulcrum) server software. However, I decided to also release this code as a stand-alone library.
+I initially wrote this code for use in my [Fulcrum](https://github.com/cculianu/Fulcrum) server software. Thinking it might be useful to others, I decided to also release this code as a stand-alone library.
 
 ### FAQ
 
-Q: *Doesn't Qt already have a JSON parser and serializer in `QJsonDocument`? Why does this library even exist??*
-A: Yes, it does. But in Qt versions prior to Qt 5.15.x, the [QJsonDocument serializer and parser suffered from a 128MB limitation](https://bugreports.qt.io/browse/QTBUG-47629). It also would fragment the heap over time because it would pre-alloc a huge buffer to operate on.  In Qt 5.15.0 they fixed that limitation and the heap fragmentation, but made serialization brutally slow (like 5x slower in some cases!) and they also [broke things](https://bugreports.qt.io/browse/QTBUG-84610). Given that basically you can't rely on the Qt JSON support across versions to be consistent, you can't rely on its performance, and you can't even rely on it to produce the same JSON, it was inadequate.  An independent library that doesn't change over time is needed.  You can just drop the files from this library in your project and be sure your JSON semantics and/or behavior and/or performance won't change as you target various Qt versions.
+**Q:** *Doesn't Qt already have a JSON parser and serializer in `QJsonDocument`? Why does this library even exist??*
+
+**A:** Yes, it does. But in Qt versions prior to Qt 5.15.x, the [QJsonDocument serializer and parser suffered from a 128MB limitation](https://bugreports.qt.io/browse/QTBUG-47629). It also would fragment the heap over time because it would pre-alloc a huge buffer to operate on.  In Qt 5.15.0 they fixed that limitation and the heap fragmentation, but made serialization brutally slow (like 5x slower in some cases!) and they also [broke things](https://bugreports.qt.io/browse/QTBUG-84610). Given that basically you can't rely on the Qt JSON support across versions to be consistent, you can't rely on its performance, and you can't even rely on it to produce the same JSON, it was inadequate.  An independent library that doesn't change over time is needed.  You can just drop the files from this library in your project and be sure your JSON semantics and/or behavior and/or performance won't change as you target various Qt versions.
 
 
 ### Key Highlights:
