@@ -28,13 +28,16 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <QFile>
 #include <QMetaType>
+#include <QtDebug>
 #include <QVariant>
 
 #include <algorithm>
 #include <array>
 #include <cinttypes>
+#include <clocale>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 #include <type_traits>
 
@@ -267,8 +270,21 @@ namespace {
 
 namespace Json {
     Error::~Error() {} // for vtable
+    namespace {
+    void checkLocale() {
+        static constexpr auto dec = ".";
+        auto *lconv = std::localeconv();
+        if (!lconv || 0 != std::strcmp(lconv->decimal_point, dec)) {
+            static constexpr auto fallback = "C";
+            auto * const l = std::setlocale(LC_NUMERIC, nullptr);
+            qWarning("Json::serialzie: LC_NUMERIC was not as expected, but instead was \"%s\"; Forcing \"%s\"", l, fallback);
+            setlocale(LC_NUMERIC, fallback);
+        }
+    }
+    }
     QByteArray serialize(const QVariant &v, unsigned prettyIndent, unsigned indentLevel)
     {
+        checkLocale();
         QByteArray ba; // we do it this way for RVO to work on all compilers
         Writer writer{ba};
         ba.reserve(1024);
@@ -278,6 +294,7 @@ namespace Json {
 
     QVariant parseUtf8(const QByteArray &ba, ParseOption opt)
     {
+        checkLocale();
         QVariant ret;
         if (!detail::parse(ret, ba))
             throw ParseError(QString("Failed to parse Json from string: %1%2").arg(QString(ba.left(80)))
