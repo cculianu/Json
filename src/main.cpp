@@ -25,6 +25,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 #include "Json.h"
 #include "Json_Parser.h"
+#include "simdjson/simdjson.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -38,6 +39,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <cstdlib>
 #include <cstdint>
 #include <iostream>
+#include <list>
+#include <vector>
+
 
 namespace {
 /// Super class of Debug, Warning, Error classes.  Can be instantiated for regular log messages.
@@ -130,6 +134,29 @@ void bench(const QString &dir = "bench") {
           << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
 
     Log() << "---";
+    Log() << "Benching simdjson Json parse: Iterating " << iters << " times ...";
+    // Bugs in simdjson mean we need to keep around the parser forever it seems, and not copy or move it.
+    // So we do this.
+    std::list<std::pair<simdjson::dom::parser, simdjson::dom::element>> sjparsed;
+    t0 = getTimeSecs();
+    for (int i = 0; i < iters; ++i) {
+        decltype (sjparsed) dummy;
+        auto & theList = i ? dummy : sjparsed;
+        for (const auto & ba : fileData) {
+            theList.emplace_back();
+            auto & [sjparser, parsed] = theList.back();
+            auto error = sjparser.parse(std::string_view{ba.data(), size_t(ba.size())}).get(parsed);
+            if (error)
+                throw Exception(QString("Could not parse: %1").arg(error));
+            if (parsed.is_null()) throw Exception("Parse result is null");
+        }
+    }
+    tf = getTimeSecs();
+    Log() << "simdjson Json parse - total: " << (tf-t0) << " secs" << " - per-iter: "
+          << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
+
+
+    Log() << "---";
     Log() << "Benching custom Json lib serialize: Iterating " << iters << " times ...";
     t0 = getTimeSecs();
     for (int i = 0; i < iters; ++i) {
@@ -153,6 +180,19 @@ void bench(const QString &dir = "bench") {
     }
     tf = getTimeSecs();
     Log() << "Qt lib serialize - total: " << (tf-t0) << " secs" << " - per-iter: "
+          << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
+
+    Log() << "---";
+    Log() << "Benching simdjson lib serialize: Iterating " << iters << " times ...";
+    t0 = getTimeSecs();
+    for (int i = 0; i < iters; ++i) {
+        for (const auto & [_, parsed] : sjparsed) {
+            auto str = simdjson::to_string(parsed);
+            if (str.empty()) throw Exception("Serializaiton error");
+        }
+    }
+    tf = getTimeSecs();
+    Log() << "simdjson lib serialize - total: " << (tf-t0) << " secs" << " - per-iter: "
           << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
 
     Log() << "---";
