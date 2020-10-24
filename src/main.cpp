@@ -68,6 +68,54 @@ double getTimeSecs() {
     const auto now = std::chrono::high_resolution_clock::now();
     return std::chrono::duration_cast<std::chrono::microseconds>(now - t0).count() / 1e6;
 }
+
+QVariant sjToVariant(const simdjson::dom::element &e) {
+    QVariant var;
+    using T = simdjson::dom::element_type;
+    switch (e.type()) {
+    case T::ARRAY: {
+        QVariantList l;
+        auto && res = e.get_array();
+        auto && arr = res.value();
+        l.reserve(arr.size());
+        for (const auto &e2 : arr)
+            l.push_back(sjToVariant(e2));
+        var = l;
+        break;
+    }
+    case T::OBJECT: {
+        QVariantMap m;
+        auto && res = e.get_object();
+        auto && o = res.value();
+        for (auto && [k, v] : o)
+            m.insert(QString::fromUtf8(k.data(), k.size()), sjToVariant(v));
+        var = m;
+        break;
+    }
+    case T::INT64:
+        var = e.get_int64().value();
+        break;
+    case T::UINT64:
+        var = e.get_uint64().value();
+        break;
+    case T::DOUBLE:
+        var = e.get_double().value();
+        break;
+    case T::BOOL:
+        var = e.get_bool().value();
+        break;
+    case T::STRING: {
+        std::string_view s = e.get_string().value();
+        var = QString::fromUtf8(s.data(), s.size());
+        break;
+    }
+    case T::NULL_VALUE:
+        // default constructed QVariant is already null
+        break;
+    }
+    return var;
+}
+
 }
 void bench(const QString &dir = "bench") {
     using namespace Json;
@@ -87,7 +135,6 @@ void bench(const QString &dir = "bench") {
         total += fileData.back().size();
     }
     Log() << "Read " << total << " bytes total";
-    std::vector<QVariant> parsed;
     int iters = 1;
     {
         auto itenv = std::getenv("ITERS");
@@ -100,22 +147,26 @@ void bench(const QString &dir = "bench") {
     }
     Log() << "---";
     Log() << "Benching custom Json lib parse: Iterating " << iters << " times ...";
+    std::vector<QVariant> parsed;
+    parsed.reserve(fileData.size());
     double t0 = getTimeSecs();
     for (int i = 0; i < iters; ++i) {
         for (const auto & ba : fileData) {
             auto var = parseUtf8(ba, ParseOption::AcceptAnyValue);
             if (var.isNull()) throw Exception("Parse result is null");
             if (parsed.size() != fileData.size())
-                parsed.push_back(var); // save parsed data
+                parsed.emplace_back(std::move(var)); // save parsed data
         }
     }
     double tf = getTimeSecs();
     Log() << "Custom lib parse - total: " << (tf-t0) << " secs" << " - per-iter: "
           << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
-    parsed.clear();
+
 
     Log() << "---";
     Log() << "Benching Qt Json parse: Iterating " << iters << " times ...";
+    decltype (parsed) qtparsed;
+    qtparsed.reserve(fileData.size());
     t0 = getTimeSecs();
     for (int i = 0; i < iters; ++i) {
         for (const auto & ba : fileData) {
@@ -125,8 +176,8 @@ void bench(const QString &dir = "bench") {
                 throw Exception(QString("Could not parse: %1").arg(err.errorString()));
             auto var = d.toVariant();
             if (var.isNull()) throw Exception("Parse result is null");
-            if (parsed.size() != fileData.size())
-                parsed.push_back(var); // save parsed data
+            if (qtparsed.size() != fileData.size())
+                qtparsed.emplace_back(std::move(var)); // save parsed data
         }
     }
     tf = getTimeSecs();
@@ -137,18 +188,25 @@ void bench(const QString &dir = "bench") {
     Log() << "Benching simdjson Json parse: Iterating " << iters << " times ...";
     // Bugs in simdjson mean we need to keep around the parser forever it seems, and not copy or move it.
     // So we do this.
-    std::list<std::pair<simdjson::dom::parser, simdjson::dom::element>> sjparsed;
+    //std::list<std::pair<simdjson::dom::parser, simdjson::dom::element>> sjparsed;
+    decltype (parsed) sjparsed;
+    sjparsed.reserve(fileData.size());
     t0 = getTimeSecs();
     for (int i = 0; i < iters; ++i) {
-        decltype (sjparsed) dummy;
-        auto & theList = i ? dummy : sjparsed;
+        //decltype (sjparsed) dummy;
+        //auto & theList = i ? dummy : sjparsed;
         for (const auto & ba : fileData) {
-            theList.emplace_back();
-            auto & [sjparser, parsed] = theList.back();
-            auto error = sjparser.parse(std::string_view{ba.data(), size_t(ba.size())}).get(parsed);
+            //theList.emplace_back();
+            //auto & [sjparser, elem] = theList.back();
+            simdjson::dom::parser parser;
+            simdjson::dom::element elem;
+            auto error = parser.parse(std::string_view{ba.data(), size_t(ba.size())}).get(elem);
             if (error)
                 throw Exception(QString("Could not parse: %1").arg(error));
-            if (parsed.is_null()) throw Exception("Parse result is null");
+            if (elem.is_null()) throw Exception("Parse result is null");
+            auto var = sjToVariant(elem);
+            if (sjparsed.size() != fileData.size())
+                sjparsed.emplace_back(std::move(var));
         }
     }
     tf = getTimeSecs();
@@ -172,7 +230,7 @@ void bench(const QString &dir = "bench") {
     Log() << "Benching Qt lib serialize: Iterating " << iters << " times ...";
     t0 = getTimeSecs();
     for (int i = 0; i < iters; ++i) {
-        for (const auto & var : parsed) {
+        for (const auto & var : qtparsed) {
             auto d = QJsonDocument::fromVariant(var);
             auto json = d.toJson(QJsonDocument::JsonFormat::Indented);
             if (json.isEmpty()) throw Exception("Serializaiton error");
@@ -182,6 +240,14 @@ void bench(const QString &dir = "bench") {
     Log() << "Qt lib serialize - total: " << (tf-t0) << " secs" << " - per-iter: "
           << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
 
+    Log() << "---";
+    for (size_t i = 0; i < sjparsed.size() && i < parsed.size() && i < size_t(files.size()); ++i) {
+        Log() << "sjparsed[" << i << "] file: \"" << files[i] << "\""
+              << (serialize(sjparsed[i]) == serialize(parsed[i])
+                  ? " - re-serializes identically - OK" : " - is NOT EQUAL to the other - ERROR");
+    }
+    /*
+    //There is no way to really create a document dynamically and serialize it using simdjson, so we skip this.
     Log() << "---";
     Log() << "Benching simdjson lib serialize: Iterating " << iters << " times ...";
     t0 = getTimeSecs();
@@ -194,6 +260,7 @@ void bench(const QString &dir = "bench") {
     tf = getTimeSecs();
     Log() << "simdjson lib serialize - total: " << (tf-t0) << " secs" << " - per-iter: "
           << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
+    */
 
     Log() << "---";
 }
