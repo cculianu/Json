@@ -168,8 +168,6 @@ void bench(const QString &dir = "bench") {
     if (isParserAvailable(ParserBackend::SimdJson)) {
         Log() << "---";
         Log() << "Benching simdjson Json parse: Iterating " << iters << " times ...";
-        // Bugs in simdjson mean we need to keep around the parser forever it seems, and not copy or move it.
-        // So we do this.
         sjparsed.reserve(fileData.size());
         t0 = getTimeSecs();
         for (int i = 0; i < iters; ++i) {
