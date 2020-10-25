@@ -644,6 +644,7 @@ namespace Json {
 
 bool isParserAvailable(ParserBackend backend) {
     switch (backend) {
+    case ParserBackend::FastestAvailable:
     case ParserBackend::Default: return true;
     case ParserBackend::SimdJson: return bool(HAVE_SIMDJSON);
     }
@@ -658,8 +659,11 @@ bool sjParse(QVariant &out, const QByteArray &bytes);
 
 bool parse(QVariant &out, const QByteArray &bytes, ParserBackend backend)
 {
-    if (backend == ParserBackend::SimdJson)
+    if (backend == ParserBackend::SimdJson
+            || (backend == ParserBackend::FastestAvailable && isParserAvailable(ParserBackend::SimdJson)))
         return sjParse(out, bytes);
+
+    // "Default" (internal) parser implementation below
 
     enum ExpectBits : uint32_t {
         EXP_OBJ_NAME = 1U << 0,

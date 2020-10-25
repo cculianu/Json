@@ -26,17 +26,20 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Json.h"
 #include "Json_Parser.h"
 
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QStringList>
 #include <QtDebug>
 #include <QTimer>
 
 #include <chrono>
 #include <cstdlib>
 #include <cstdint>
+#include <cstdio>
 #include <iostream>
 #include <list>
 #include <string_view>
@@ -92,17 +95,23 @@ void bench(const QString &dir = "bench") {
     using namespace Json;
     QDir dataDir(dir);
     if (!dataDir.exists()) throw BadArgs(QString("Bench data directory '%1' does not exist").arg(dir));
-    auto files = dataDir.entryList({{"*.json"}}, QDir::Filter::Files);
+    const QStringList nameFilters{{"*.json", "*.json.qz"}};
+    auto files = dataDir.entryList(nameFilters, QDir::Filter::Files);
     if (files.isEmpty()) throw BadArgs(QString("Bench data directory '%1' does not have any *.json files").arg(dir));
     std::vector<QByteArray> fileData;
     std::size_t total = 0;
-    Log() << "Reading " << files.size() << " *.json files from DATADIR=" << dir << " ...";
+    Log() << "Reading " << files.size() << " " << nameFilters.join('/') << " files from DATADIR=" << dir << " ...";
 
     for (auto & fn : files) {
         QFile f(dataDir.path() + QDir::separator() + fn);
-        if (!f.open(QFile::ReadOnly|QFile::Text))
+        if (!f.open(QFile::ReadOnly | (fn.endsWith(".json") ? QFile::Text : QFile::ReadOnly) | QFile::Unbuffered))
             throw Exception(QString("Cannot open %1").arg(f.fileName()));
         fileData.push_back(f.readAll());
+        if (fn.endsWith(".qz")) {
+            fileData.back() = qUncompress(fileData.back());
+            if (fileData.back().isEmpty())
+                throw Exception(QString("Unable to uncompress: %1").arg(fn));
+        }
         total += fileData.back().size();
     }
     Log() << "Read " << total << " bytes total";
@@ -331,8 +340,57 @@ void test(const QString &dir, bool useSimdJson)
         runTest(t);
 }
 
+void qCompressUncompressFiles(const QStringList &l, bool cat)
+{
+    for (const auto &fn : l) {
+        QByteArray bytes;
+        { // read data all at once into memory
+            QFile f(fn);
+            if (!f.open(QFile::ReadOnly))
+                throw Exception(QString("Cannot open %1").arg(f.fileName()));
+            bytes = f.readAll();
+            if (bytes.isEmpty()) throw BadArgs(QString("File is empty: %1").arg(f.fileName()));
+        }
+        const QString suffix(".qz");
+        const bool isUncomp = fn.endsWith(suffix);
+        QString fout = !isUncomp ? fn + suffix : fn.left(fn.length() - suffix.length());
+        const auto origSize = bytes.size();
+        if (!cat)
+            Log() << (!isUncomp ? "Compressing " : "Uncompressing ") << fn << " (" << origSize << " bytes) -> " << fout << " ...";
+        const auto t0 = getTimeSecs();
+        bytes = isUncomp ? qUncompress(bytes) : qCompress(bytes, 9);
+        if (bytes.isEmpty())
+            throw Exception(QString("%1 failed").arg(isUncomp ? "qUncompress" : "qCompress"));
+        if (!cat) {
+            // write out to filename.qz and/or filename (no .qz)
+            QFile f(fout);
+            if (!f.open(QFile::WriteOnly|QFile::Truncate))
+                throw Exception(QString("Cannot open %1 for writing").arg(f.fileName()));
+            f.write(bytes);
+        } else {
+            // cat -- write to stdout
+            std::fwrite(bytes.data(), 1, bytes.size(), stdout);
+            std::fflush(stdout);
+        }
+        if (!cat)
+            QFile::remove(fn);
+        const auto tf = getTimeSecs();
+        const double ratio = isUncomp ? origSize/double(bytes.size()) : double(bytes.size())/origSize;
+        if (!cat)
+            Log() << "  -> Wrote " << bytes.size() << " bytes in " << QString::number((tf-t0) * 1e3, 'f', 3)
+                  << " msec, input file deleted, ratio: " << QString::number(ratio, 'f', 3);
+    }
+}
+
 int main(int argc, char *argv[])
 {
+    static const double tStart = getTimeSecs();
+    static bool dontPrintAtExit = false;
+    std::atexit([]{
+        if (!dontPrintAtExit)
+            Log() << "Elapsed: " << QString::number(getTimeSecs() - tStart, 'f', 3) << " secs";
+    });
+
     QCoreApplication a(argc, argv);
 
     if (argc >= 2 && QByteArrayLiteral("bench") == argv[1]) {
@@ -362,8 +420,23 @@ int main(int argc, char *argv[])
                 a.exit(1);
             }
         });
+    } else if (bool cat{}; argc >= 2 && (QByteArrayLiteral("qz") == argv[1]
+                                         || (cat = (QByteArrayLiteral("qzcat") == argv[1])))) {
+        QTimer::singleShot(0, &a, [&]{
+            try {
+                if (argc <= 2) throw BadArgs("Please specify one or more files to qCompress/qUncompress");
+                QStringList files;
+                for (int i = 2; i < argc; ++i) files.push_back(QString::fromUtf8(argv[i]));
+                if (cat) dontPrintAtExit = true;
+                qCompressUncompressFiles(files, cat);
+                a.exit(0);
+            } catch (const std::exception &e) {
+                qCritical() << "Caught exception:" << e.what();
+                a.exit(1);
+            }
+        });
     } else {
-        Log() << "Please specify one of: bench, test, test_simdjson";
+        Log() << "Please specify one of: bench, test, test_simdjson, qz, qzcat";
         return 1;
     }
     return a.exec();

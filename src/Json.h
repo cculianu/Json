@@ -61,7 +61,8 @@ namespace Json {
 
     enum class ParserBackend {
         Default,          ///< The default parser (implemented in Json_Parser.cpp), always available
-        SimdJson          ///< Much faster experimental parser, only available on aarch64 and x86-64
+        SimdJson,         ///< Much faster experimental parser, only available on aarch64 and x86-64
+        FastestAvailable  ///< If SimdJson is available, use that, if not, use Default.
     };
 
     /// If ParseOption is not satisfied, throws Error. May also throw Error on invalid JSON. May throw
