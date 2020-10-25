@@ -14,7 +14,11 @@ I initially wrote this code for use in my [Fulcrum](https://github.com/cculianu/
 ### Key Highlights:
 - Requires C++17 and Qt5
 - Like `QJsonDocument`, supports parsing/serialization directly to/from `QVariant`
-- Performance comparable to Qt 5.14.x (not quite as fast on parsing, but fast enough) but faster than Qt 5.15.x for serialization by a longshot.
+- Performance, parsing:
+  - Default backend: comparable to Qt 5.14.x (not quite as fast on parsing, but fast enough)
+  - SimdJson backend: 2x faster than Qt!
+- Performance, serializing:
+  - Faster than Qt 5.15.x for serialization by a longshot.
 - Doesn't fragment the heap (in Qt 5.14.x and earlier this could be a problem since it would cause your process memory to grow over time).
 - Doesn't suffer from a 128MB limitation. Can work on arbitrarily* large data.
   - *Parser nesting limited to 512 deep by default but can be changed easily by modifying a compile-time constant (in `Json_Parser.cpp`).
@@ -25,6 +29,7 @@ I initially wrote this code for use in my [Fulcrum](https://github.com/cculianu/
 ### How to use in your project
 
 1. Copy `Json.h`, `Json_Parser.h`, `Json.cpp` and `Json_Parser.cpp` into your project.
+2. Optionally, if you wish to use the SimdJson backend, copy `simdjson/simdjson.h` and `simdjson/simdjson/cpp` into your project as well.
 2. Enjoy!  (The license here is MIT so you can use this in any project, commercial or open source).
 
 ### Quick Example

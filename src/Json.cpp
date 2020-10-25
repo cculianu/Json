@@ -269,7 +269,9 @@ namespace {
 }
 
 namespace Json {
-    Error::~Error() {} // for vtable
+    Error::~Error() {}                         // for vtable
+    ParseError::~ParseError() {}               // for vtable
+    ParserUnavailable::~ParserUnavailable() {} // for vtable
     namespace {
     void checkLocale() {
         static constexpr auto dec = ".";
@@ -292,11 +294,11 @@ namespace Json {
         return ba;
     }
 
-    QVariant parseUtf8(const QByteArray &ba, ParseOption opt)
+    QVariant parseUtf8(const QByteArray &ba, ParseOption opt, ParserBackend backend)
     {
         checkLocale();
         QVariant ret;
-        if (!detail::parse(ret, ba))
+        if (!detail::parse(ret, ba, backend))
             throw ParseError(QString("Failed to parse Json from string: %1%2").arg(QString(ba.left(80)))
                              .arg(ba.size() > 80 ? "..." : ""));
         if (opt == ParseOption::RequireObject && QMetaType::Type(ret.type()) != QMetaType::QVariantMap)

@@ -25,15 +25,13 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 #pragma once
 
+#include "Json.h"
+
 #include <QByteArray>
 #include <QVariant>
 
 namespace Json {
 namespace detail {
-    extern bool parse(QVariant &out, const QByteArray &json);
-#ifdef ENABLE_JSON_TESTS
-    extern void test(const QString &testPath);
-    extern void bench(const QString &benchPath);
-#endif
+    extern bool parse(QVariant &out, const QByteArray &json, ParserBackend backend);
 }
 }

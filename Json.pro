@@ -17,13 +17,11 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
         src/main.cpp \
         src/Json.cpp \
-        src/Json_Parser.cpp \
-        src/simdjson/simdjson.cpp
+        src/Json_Parser.cpp
 
 HEADERS += \
         src/Json.h \
-        src/Json_Parser.h \
-        src/simdjson/simdjson.h
+        src/Json_Parser.h
 
 
 # Default rules for deployment.

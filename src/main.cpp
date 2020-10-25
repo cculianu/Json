@@ -25,7 +25,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 #include "Json.h"
 #include "Json_Parser.h"
-#include "simdjson/simdjson.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -70,85 +69,25 @@ double getTimeSecs() {
     return std::chrono::duration_cast<std::chrono::microseconds>(now - t0).count() / 1e6;
 }
 
-QVariant sjToVariant(const simdjson::dom::element &e) {
-    QVariant var;
-    using T = simdjson::dom::element_type;
-    switch (e.type()) {
-    case T::ARRAY: {
-        QVariantList l;
-        auto && res = e.get_array();
-        auto && arr = res.value();
-        l.reserve(arr.size());
-        for (const auto &e2 : arr)
-            l.push_back(sjToVariant(e2));
-        var = l;
-        break;
-    }
-    case T::OBJECT: {
-        QVariantMap m;
-        auto && res = e.get_object();
-        auto && o = res.value();
-        for (auto && [k, v] : o)
-            m.insert(QString::fromUtf8(k.data(), k.size()), sjToVariant(v));
-        var = m;
-        break;
-    }
-    case T::INT64:
-        var = e.get_int64().value();
-        break;
-    case T::UINT64:
-        var = e.get_uint64().value();
-        break;
-    case T::DOUBLE:
-        var = e.get_double().value();
-        break;
-    case T::BOOL:
-        var = e.get_bool().value();
-        break;
-    case T::STRING: {
-        const std::string_view s = e.get_string().value();
-        // this fromUtf8 syntax is preferred since it can pick up embedded NULs
-        var = QString::fromUtf8(s.data(), s.size());
-        break;
-    }
-    case T::NULL_VALUE:
-        // default constructed QVariant is already null
-        break;
-    }
-    return var;
-}
-
-// throws Error (or ParseError)
-QVariant sjParse(const QByteArray &ba, Json::ParseOption opt = Json::ParseOption::AcceptAnyValue) noexcept(false)
+void sjPrintInfo()
 {
-    simdjson::dom::parser parser;
-    simdjson::dom::element elem;
-    auto error = parser.parse(std::string_view{ba.data(), size_t(ba.size())}).get(elem);
-    if (error)
-        throw Json::ParseError(QString("simdjson parse error: %1").arg(simdjson::error_message(error)));
-    if (opt == Json::ParseOption::RequireArray && !elem.is_array())
-        throw Json::Error("simdjson Error: expected array");
-    else if (opt == Json::ParseOption::RequireObject && !elem.is_object())
-        throw Json::Error("simdjson Error: expected object");
-    return sjToVariant(elem);
-}
-
-void sjImplInfo()
-{
+    auto info = Json::SimdJson::getInfo();
+    if (!info)
+        // simdjson not available
+        return;
     Log() << "simdjson implementations:";
-    for (auto *implementation : simdjson::available_implementations) {
-        Log() << "    " << QString::fromStdString(implementation->name()) << ": "
-              << QString::fromStdString(implementation->description())
-              << (implementation->supported_by_runtime_system() ? "  [supported]" : "  [not supported]");
+    for (const auto & imp : info->implementations) {
+        Log() << "    " << imp.name << ": " << imp.description
+              << (imp.supported ? "  [supported]" : "  [not supported]");
     }
-    Log() << "active implementation: " << QString::fromStdString(simdjson::active_implementation->name());
+    Log() << "active implementation: " << info->active.name;
     Log() << "---";
 }
 
 } // namespace
 
 void bench(const QString &dir = "bench") {
-    sjImplInfo();
+    sjPrintInfo();
 
     using namespace Json;
     QDir dataDir(dir);
@@ -216,25 +155,26 @@ void bench(const QString &dir = "bench") {
     Log() << "Qt Json parse - total: " << (tf-t0) << " secs" << " - per-iter: "
           << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
 
-    Log() << "---";
-    Log() << "Benching simdjson Json parse: Iterating " << iters << " times ...";
-    // Bugs in simdjson mean we need to keep around the parser forever it seems, and not copy or move it.
-    // So we do this.
     decltype (parsed) sjparsed;
-    sjparsed.reserve(fileData.size());
-    t0 = getTimeSecs();
-    for (int i = 0; i < iters; ++i) {
-        for (const auto & ba : fileData) {
-            auto var = sjParse(ba);
-            if (var.isNull()) throw Exception("Parse result is null");
-            if (sjparsed.size() != fileData.size())
-                sjparsed.emplace_back(std::move(var));
+    if (isParserAvailable(ParserBackend::SimdJson)) {
+        Log() << "---";
+        Log() << "Benching simdjson Json parse: Iterating " << iters << " times ...";
+        // Bugs in simdjson mean we need to keep around the parser forever it seems, and not copy or move it.
+        // So we do this.
+        sjparsed.reserve(fileData.size());
+        t0 = getTimeSecs();
+        for (int i = 0; i < iters; ++i) {
+            for (const auto & ba : fileData) {
+                auto var = parseUtf8(ba, ParseOption::AcceptAnyValue, ParserBackend::SimdJson);
+                if (var.isNull()) throw Exception("Parse result is null");
+                if (sjparsed.size() != fileData.size())
+                    sjparsed.emplace_back(std::move(var));
+            }
         }
+        tf = getTimeSecs();
+        Log() << "simdjson Json parse - total: " << (tf-t0) << " secs" << " - per-iter: "
+              << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
     }
-    tf = getTimeSecs();
-    Log() << "simdjson Json parse - total: " << (tf-t0) << " secs" << " - per-iter: "
-          << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
-
 
     Log() << "---";
     Log() << "Benching custom Json lib serialize: Iterating " << iters << " times ...";
@@ -262,11 +202,13 @@ void bench(const QString &dir = "bench") {
     Log() << "Qt lib serialize - total: " << (tf-t0) << " secs" << " - per-iter: "
           << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
 
-    Log() << "---";
-    for (size_t i = 0; i < sjparsed.size() && i < parsed.size() && i < size_t(files.size()); ++i) {
-        Log() << "sjparsed[" << i << "] file: \"" << files[i] << "\""
-              << (serialize(sjparsed[i]) == serialize(parsed[i])
-                  ? " - re-serializes identically - OK" : " - is NOT EQUAL to the other - ERROR");
+    if (!sjparsed.empty()) {
+        Log() << "---";
+        for (size_t i = 0; i < sjparsed.size() && i < parsed.size() && i < size_t(files.size()); ++i) {
+            Log() << "sjparsed[" << i << "] file: \"" << files[i] << "\""
+                  << (serialize(sjparsed[i]) == serialize(parsed[i])
+                      ? " - re-serializes identically - OK" : " - is NOT EQUAL to the other - ERROR");
+        }
     }
 
     Log() << "---";
@@ -275,9 +217,7 @@ void bench(const QString &dir = "bench") {
 void test(const QString &dir, bool useSimdJson)
 {
     using namespace Json;
-    const auto Parse = [&useSimdJson](const QByteArray &ba, ParseOption opt = ParseOption::AcceptAnyValue) -> QVariant {
-        return useSimdJson ? sjParse(ba, opt) : parseUtf8(ba, opt);
-    };
+    const ParserBackend parser = useSimdJson ? ParserBackend::SimdJson : ParserBackend::Default;
     // basic tests
     {
         const auto expect1 = "[\"astring\",\"anotherstring\",\"laststring\",null]";
@@ -325,9 +265,10 @@ void test(const QString &dir, bool useSimdJson)
         Log() << "QVariantHash -> JSON: " << toUtf8(h, true, SerOption::BareNullOk);
         // we can't do the top-level hash since that has random order based on hash seed.. so we do this
         json = toUtf8(h, false /* !compact */, SerOption::BareNullOk);
-        auto hh = Parse(json, ParseOption::RequireObject).toMap();
+        auto hh = parseUtf8(json, ParseOption::RequireObject, parser).toMap();
         json = toUtf8(hh["mapkey"], true, SerOption::BareNullOk);
-        if (json != expect3) throw Exception(QString("Json \"mapkey\" does not match\nexcpected:\n%1\n\ngot:\n%2").arg(expect3).arg(QString(json)));
+        if (json != expect3)
+            throw Exception(QString("Json \"mapkey\" does not match\nexcpected:\n%1\n\ngot:\n%2").arg(expect3).arg(QString(json)));
         Log() << "Basic tests: passed";
     }
     // /end basic tests
@@ -354,7 +295,7 @@ void test(const QString &dir, bool useSimdJson)
     }
     if (files.empty()) throw BadArgs(QString("DATADIR '%1' does not have any [pass/fail/round]*.json files").arg(dir));
     Log() << "Found " << files.size() << " json test files, running extended tests ...";
-    const auto runTest = [&Parse, useSimdJson](const TFile &t) {
+    const auto runTest = [parser](const TFile &t) {
         QFile f(t.path);
         auto baseName = QFileInfo(t.path).baseName();
         if (!f.open(QFile::ReadOnly|QFile::Text))
@@ -363,7 +304,7 @@ void test(const QString &dir, bool useSimdJson)
         QVariant var;
         bool didFail = false;
         try {
-            var = Parse(json, ParseOption::AcceptAnyValue);
+            var = parseUtf8(json, ParseOption::AcceptAnyValue, parser);
         } catch (...) {
             if (!t.wantsFail)
                 throw;
@@ -371,7 +312,7 @@ void test(const QString &dir, bool useSimdJson)
         }
         if (t.wantsFail && !didFail) {
             auto msg = QString("Expected to fail test: %1 (Json: %2)").arg(baseName).arg(QString(toUtf8(var, true, SerOption::BareNullOk)));
-            if (useSimdJson)
+            if (parser == ParserBackend::SimdJson)
                 // for simdjson be more lax and just log the error and proceed
                 Log() << msg;
             else

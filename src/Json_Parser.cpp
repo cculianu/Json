@@ -54,6 +54,22 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define LIKELY(bool_expr)   EXPECT(bool(bool_expr), 1)
 #define UNLIKELY(bool_expr) EXPECT(bool(bool_expr), 0)
 
+// embed simdjson here, if we are on a known 64-bit platform and the header & sources are available
+#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)
+#if __has_include("simdjson/simdjson.h") && __has_include("simdjson/simdjson.cpp")
+#include "simdjson/simdjson.h"
+#include "simdjson/simdjson.cpp"
+#define HAVE_SIMDJSON 1
+#elif __has_include("simdjson.h") && __has_include("simdjson.cpp")
+#include "simdjson.h"
+#include "simdjson.cpp"
+#define HAVE_SIMDJSON 1
+#endif
+#endif
+#ifndef HAVE_SIMDJSON
+#define HAVE_SIMDJSON 0
+#endif
+
 namespace {
 
 enum jtokentype {
@@ -625,9 +641,26 @@ QVariant Container::toVariant() const {
 } // end anonymous namespace
 
 namespace Json {
+
+bool isParserAvailable(ParserBackend backend) {
+    switch (backend) {
+    case ParserBackend::Default: return true;
+    case ParserBackend::SimdJson: return bool(HAVE_SIMDJSON);
+    }
+}
+
 namespace detail {
-bool parse(QVariant &out, const QByteArray &bytes)
+
+namespace {
+/// May throw ParserUnavailable if the simdjson parser is not compiled-in
+bool sjParse(QVariant &out, const QByteArray &bytes);
+}
+
+bool parse(QVariant &out, const QByteArray &bytes, ParserBackend backend)
 {
+    if (backend == ParserBackend::SimdJson)
+        return sjParse(out, bytes);
+
     enum ExpectBits : uint32_t {
         EXP_OBJ_NAME = 1U << 0,
         EXP_COLON = 1U << 1,
@@ -898,5 +931,94 @@ bool parse(QVariant &out, const QByteArray &bytes)
 #   undef setExpect
 #   undef clearExpect
 }
-} // end namespace detail
-} // end namespace Json
+
+namespace {
+#if HAVE_SIMDJSON
+QVariant sjToVariant(const simdjson::dom::element &e) {
+    QVariant var;
+    using T = simdjson::dom::element_type;
+    switch (e.type()) {
+    case T::ARRAY: {
+        QVariantList l;
+        auto && res = e.get_array();
+        auto && arr = res.value();
+        l.reserve(arr.size());
+        for (const auto &e2 : arr)
+            l.push_back(sjToVariant(e2));
+        var = l;
+        break;
+    }
+    case T::OBJECT: {
+        QVariantMap m;
+        auto && res = e.get_object();
+        auto && o = res.value();
+        for (auto && [k, v] : o)
+            m.insert(QString::fromUtf8(k.data(), k.size()), sjToVariant(v));
+        var = m;
+        break;
+    }
+    case T::INT64:
+        var = e.get_int64().value();
+        break;
+    case T::UINT64:
+        var = e.get_uint64().value();
+        break;
+    case T::DOUBLE:
+        var = e.get_double().value();
+        break;
+    case T::BOOL:
+        var = e.get_bool().value();
+        break;
+    case T::STRING: {
+        const std::string_view s = e.get_string().value();
+        // this fromUtf8 syntax is preferred since it can pick up embedded NULs
+        var = QString::fromUtf8(s.data(), s.size());
+        break;
+    }
+    case T::NULL_VALUE:
+        // default constructed QVariant is already null
+        break;
+    }
+    return var;
+}
+#endif
+
+// does not normally throw unless !HAVE_SIMDJSON in which case it always throws ParserUnavailable
+bool sjParse(QVariant &out, const QByteArray &bytes)
+{
+#if HAVE_SIMDJSON
+    simdjson::dom::parser parser;
+    simdjson::dom::element elem;
+    auto error = parser.parse(std::string_view{bytes.data(), size_t(bytes.size())}).get(elem);
+    if (error)
+        return false;
+    out = sjToVariant(elem);
+    return true;
+#else
+    (void)out; (void)bytes;
+    throw ParserUnavailable("Json Error: The SimdJson parser is not available");
+#endif
+}
+} // namespace
+} // namespace detail
+
+namespace SimdJson {
+std::optional<const Info> getInfo()
+{
+    std::optional<Info> ret;
+#if HAVE_SIMDJSON
+    ret.emplace();
+    const auto &activeName = simdjson::active_implementation->name();
+    for (auto *implementation : simdjson::available_implementations) {
+        auto & imp = ret->implementations.emplace_back();
+        imp.name = QString::fromStdString(implementation->name());
+        imp.description = QString::fromStdString(implementation->description());
+        imp.supported = implementation->supported_by_runtime_system();
+        if (implementation->name() == activeName)
+            ret->active = imp; // copy
+    }
+#endif
+    return ret;
+}
+} // namespace SimdJson
+} // namespace Json

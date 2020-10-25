@@ -29,7 +29,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <QString>
 #include <QVariant>
 
+#include <optional>
 #include <stdexcept>
+#include <vector>
 
 /// A namespace for a custom JSON parser and serializer that doesn't
 /// suffer from the 128MB limit and heap fragmentation that Qt 5.14.x
@@ -44,8 +46,12 @@ namespace Json {
         Error(const QString &msg) : std::runtime_error(msg.toUtf8().constData()) {}
         ~Error() override;
     };
+
     /// More specific Json error -- usually if trying to parse malformed JSON text.
-    struct ParseError : public Error { using Error::Error; };
+    struct ParseError : public Error { using Error::Error; ~ParseError() override; };
+
+    /// Thrown by the parseUtf8 and parseFile functions if the parser SimdJson was selected but it is unavailable.
+    struct ParserUnavailable : public Error { using Error::Error; ~ParserUnavailable() override; };
 
     enum class ParseOption {
         RequireObject,     ///< Reject any JSON that is not embeded in a JSON object { ... }
@@ -53,11 +59,18 @@ namespace Json {
         AcceptAnyValue     ///< Do not require a root-level container: accept any JSON value that is valid e.g. "str", null, true, etc
     };
 
-    /// If ParseOption is not satisfied, throws Error. May also throw Error on invalid JSON or throw
-    /// std::exception too on low-level error (bad_alloc, etc).
-    extern QVariant parseUtf8(const QByteArray &json, ParseOption = ParseOption::AcceptAnyValue);
+    enum class ParserBackend {
+        Default,          ///< The default parser (implemented in Json_Parser.cpp), always available
+        SimdJson          ///< Much faster experimental parser, only available on aarch64 and x86-64
+    };
+
+    /// If ParseOption is not satisfied, throws Error. May also throw Error on invalid JSON. May throw
+    /// ParserUnavailable. Additionally, may throw a std::exception too on low-level error (bad_alloc, etc).
+    extern QVariant parseUtf8(const QByteArray &json, ParseOption = ParseOption::AcceptAnyValue,
+                              ParserBackend = ParserBackend::Default);
     /// Convenience method -- loads all data from file and calls parseUtf8 on it.
-    extern QVariant parseFile(const QString &file, ParseOption = ParseOption::AcceptAnyValue);
+    extern QVariant parseFile(const QString &file, ParseOption = ParseOption::AcceptAnyValue,
+                              ParserBackend = ParserBackend::Default);
 
     enum class SerOption { NoBareNull, BareNullOk };
     /// Serialization, may throw Error, may throw std::exception on low-level error (bad_alloc, etc).
@@ -70,4 +83,22 @@ namespace Json {
     /// prettyIndent = 0 - compact (no whitespace), otherwise it will be the amount to indent at each level
     /// May throw Error or std::exception, or return an empty QByteArray on error.
     extern QByteArray serialize(const QVariant &v, unsigned prettyIndent = 0, unsigned indentLevel = 0);
+
+    /// Query if a certain parser backend is available
+    extern bool isParserAvailable(ParserBackend); // implemented in Json_Parser.cpp
+
+    namespace SimdJson {
+        /// Information on the simdjson backend
+        struct Info {
+            struct Implementation {
+                QString name, description;
+                bool supported{};                        ///< true if supported on this processor
+            };
+            std::vector<Implementation> implementations; ///< list of available implementations
+            Implementation active;                       ///< the currently active implementation
+        };
+        /// If isParserAvailable(ParserBackend::SimdJson), will return a valid optional with information on the simdjson
+        /// backend.  Otherwise will return an empty optional.
+        extern std::optional<const Info> getInfo(); // implemented in Json_Parser.cpp
+    }
 }
