@@ -39,8 +39,12 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /// See:
 ///     https://bugreports.qt.io/browse/QTBUG-47629
 ///     https://bugreports.qt.io/browse/QTBUG-84610
+///
+/// If using the ParserBackend::SimdJson backend, this is also *much*
+/// faster than any of the Qt parsers for parsing. For serialization it
+/// is also faster than Qt in all cases.
 namespace Json {
-    /// Generic Json error (usually if ParseOption is violated)
+    /// Generic error (this exact type usually is thrown if ParseOption is violated)
     struct Error : public std::runtime_error {
         using std::runtime_error::runtime_error;
         Error(const QString &msg) : std::runtime_error(msg.toUtf8().constData()) {}
@@ -109,7 +113,7 @@ namespace Json {
         extern std::optional<const Info> getInfo(); // implemented in Json_Parser.cpp
     }
 
-    /// Call this to force LC_NUMERIC to use decimal points otherwise parsing/serializing may produce
+    /// Call this to check and/or force LC_NUMERIC to use decimal points otherwise parsing/serializing may produce
     /// invalid numeric values (we require "." for the decimal point character).
     ///
     /// @param `autoFix` if true, we force the locale if it was incorrect. If false, we do not.
