@@ -39,6 +39,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <type_traits>
 
 #ifdef __clang__
@@ -267,26 +268,48 @@ namespace {
     }
 
 }
-
 namespace Json {
     Error::~Error() {}                         // for vtable
     ParseError::~ParseError() {}               // for vtable
     ParserUnavailable::~ParserUnavailable() {} // for vtable
-    namespace {
-    void checkLocale() {
-        static constexpr auto dec = ".";
-        auto *lconv = std::localeconv();
-        if (!lconv || 0 != std::strcmp(lconv->decimal_point, dec)) {
-            static constexpr auto fallback = "C";
-            auto * const l = std::setlocale(LC_NUMERIC, nullptr);
-            qWarning("Json::serialzie: LC_NUMERIC was not as expected, but instead was \"%s\"; Forcing \"%s\"", l, fallback);
-            setlocale(LC_NUMERIC, fallback);
+
+    bool autoFixLocale = true; // Not atomic for performance. Assumption is this is set by client code before threads are started.
+
+    bool checkLocale(bool autoFix) {
+        const auto *const lconv = std::localeconv();
+        // check that the decimal point is ".", otherwise we will produce bad Json on serialize
+        if (!lconv || 0 != std::strcmp(lconv->decimal_point, ".")) {
+            const auto l = std::setlocale(LC_NUMERIC, nullptr);
+            qWarning("Json::checkLocale: LC_NUMERIC was not as expected, but instead was \"%s\"", l ? l : "???");
+            if (autoFix) {
+                static std::mutex mut; // prevent multiple threads from entering here
+                std::unique_lock g(mut);
+                const auto fallback = "C";
+                const auto res = std::setlocale(LC_NUMERIC, fallback);
+                if (res && 0 == std::strcmp(fallback, res))
+                    qWarning("Json::checkLocale: Forced LC_NUMERIC to \"%s\"", fallback);
+                else
+                    qWarning("Json::checkLocale: Attempted to force LC_NUMERIC to \"%s\", but setlocale returned \"%s\"",
+                             fallback, res ? res : "???");
+            } else {
+                qCritical("\n"
+                          "!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!\n"
+                          "!  We may produce or parse JSON incorrectly !\n"
+                          "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+            }
+            return false;
         }
+        return true;
     }
-    }
+
+    namespace { std::once_flag once_checkLocale; }
+
     QByteArray serialize(const QVariant &v, unsigned prettyIndent, unsigned indentLevel)
     {
-        checkLocale();
+        if (autoFixLocale)
+            checkLocale(true);
+        else
+            std::call_once(once_checkLocale, checkLocale, false);
         QByteArray ba; // we do it this way for RVO to work on all compilers
         Writer writer{ba};
         ba.reserve(1024);
@@ -296,7 +319,10 @@ namespace Json {
 
     QVariant parseUtf8(const QByteArray &ba, ParseOption opt, ParserBackend backend)
     {
-        checkLocale();
+        if (autoFixLocale)
+            checkLocale(true);
+        else
+            std::call_once(once_checkLocale, checkLocale, false);
         QVariant ret;
         if (!detail::parse(ret, ba, backend))
             throw ParseError(QString("Failed to parse Json from string: %1%2").arg(QString(ba.left(80)))

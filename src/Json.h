@@ -85,6 +85,11 @@ namespace Json {
     /// May throw Error or std::exception, or return an empty QByteArray on error.
     extern QByteArray serialize(const QVariant &v, unsigned prettyIndent = 0, unsigned indentLevel = 0);
 
+
+    // --
+    // -- Below are extra utility and other functions for querying the simdjson impl, checking the locale, etc.
+    // --
+
     /// Query if a certain parser backend is available
     extern bool isParserAvailable(ParserBackend); // implemented in Json_Parser.cpp
 
@@ -103,4 +108,16 @@ namespace Json {
         /// backend.  Otherwise will return an empty optional.
         extern std::optional<const Info> getInfo(); // implemented in Json_Parser.cpp
     }
+
+    /// Call this to force LC_NUMERIC to use decimal points otherwise parsing/serializing may produce
+    /// invalid numeric values (we require "." for the decimal point character).
+    ///
+    /// @param `autoFix` if true, we force the locale if it was incorrect. If false, we do not.
+    /// @returns `true` if the locale was ok, `false` if it wasn't (will have been auto-fixed if `autoFix==true`)
+    bool checkLocale(bool autoFix = true);
+
+    /// Defaults to true. Set this to false to not check & auto-set the numeric locale on each call to serialize()
+    /// and/or parse*(). Checking the locale on each call takes ~1-10 us at most, but if you want to not waste those
+    /// cycles, this flag is offered for advanced users of this library.
+    extern bool autoFixLocale;
 }
