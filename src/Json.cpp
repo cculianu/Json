@@ -333,12 +333,12 @@ namespace Json {
             throw Error("Json Error: expected array");
         return ret;
     }
-    QVariant parseFile(const QString &file, ParseOption opt) {
+    QVariant parseFile(const QString &file, ParseOption opt, ParserBackend backend) {
         QFile f(file);
         if (!f.open(QFile::ReadOnly))
             throw Error(QString("Could not open file: %1").arg(file));
         const QByteArray ba{f.readAll()};
-        return parseUtf8(ba, opt);
+        return parseUtf8(ba, opt, backend);
     }
     QByteArray toUtf8(const QVariant &v, bool compact, SerOption opt) {
         if (opt == SerOption::NoBareNull && v.isNull())
