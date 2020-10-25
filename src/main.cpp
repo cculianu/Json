@@ -100,7 +100,7 @@ void bench(const QString &dir = "bench") {
     if (files.isEmpty()) throw BadArgs(QString("Bench data directory '%1' does not have any *.json files").arg(dir));
     std::vector<QByteArray> fileData;
     std::size_t total = 0;
-    Log() << "Reading " << files.size() << " " << nameFilters.join('/') << " files from DATADIR=" << dir << " ...";
+    Log() << "Reading " << files.size() << " " << nameFilters.join(", ") << " files from DATADIR=" << dir << " ...";
 
     for (auto & fn : files) {
         QFile f(dataDir.path() + QDir::separator() + fn);
