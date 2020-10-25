@@ -934,7 +934,8 @@ bool parse(QVariant &out, const QByteArray &bytes, ParserBackend backend)
 
 namespace {
 #if HAVE_SIMDJSON
-QVariant sjToVariant(const simdjson::dom::element &e) {
+QVariant sjToVariant(const simdjson::dom::element &e)
+{
     QVariant var;
     using T = simdjson::dom::element_type;
     switch (e.type()) {

@@ -87,6 +87,7 @@ namespace Json {
     /// Query if a certain parser backend is available
     extern bool isParserAvailable(ParserBackend); // implemented in Json_Parser.cpp
 
+    /// Information about the SimdJson backend
     namespace SimdJson {
         /// Information on the simdjson backend
         struct Info {
