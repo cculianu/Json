@@ -28,7 +28,7 @@ I initially wrote this code for use in my [Fulcrum](https://github.com/cculianu/
 
 ### How to use in your project
 
-1. Copy `Json.h`, `Json_Parser.h`, `Json.cpp` and `Json_Parser.cpp` into your project.
+1. Copy `Json.h`, `Json.cpp` and `Json_Parser.cpp` into your project.
 2. Optionally, if you wish to use the SimdJson backend, copy `simdjson/simdjson.h` and `simdjson/simdjson/cpp` into your project as well.
 2. Enjoy!  (The license here is MIT so you can use this in any project, commercial or open source).
 
