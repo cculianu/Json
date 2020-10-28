@@ -24,8 +24,7 @@ SOURCES += \
         src/Json_Parser.cpp
 
 HEADERS += \
-        src/Json.h \
-        src/Json_Parser.h
+        src/Json.h
 
 
 # Default rules for deployment.

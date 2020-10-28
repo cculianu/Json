@@ -45,17 +45,17 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /// is also faster than Qt in all cases.
 namespace Json {
     /// Generic error (this exact type usually is thrown if ParseOption is violated)
-    struct Error : public std::runtime_error {
+    struct Error : std::runtime_error {
         using std::runtime_error::runtime_error;
         Error(const QString &msg) : std::runtime_error(msg.toUtf8().constData()) {}
         ~Error() override;
     };
 
     /// More specific Json error -- usually if trying to parse malformed JSON text.
-    struct ParseError : public Error { using Error::Error; ~ParseError() override; };
+    struct ParseError : Error { using Error::Error; ~ParseError() override; };
 
     /// Thrown by the parseUtf8 and parseFile functions if the parser SimdJson was selected but it is unavailable.
-    struct ParserUnavailable : public Error { using Error::Error; ~ParserUnavailable() override; };
+    struct ParserUnavailable : Error { using Error::Error; ~ParserUnavailable() override; };
 
     enum class ParseOption {
         RequireObject,     ///< Reject any JSON that is not embeded in a JSON object { ... }
@@ -124,4 +124,22 @@ namespace Json {
     /// and/or parse*(). Checking the locale on each call takes ~1-10 us at most, but if you want to not waste those
     /// cycles, this flag is offered for advanced users of this library.
     extern bool autoFixLocale;
+
+
+    // ---
+    // --- detail
+    // ---
+
+    /// Internal namespace -- not intended for public use, but if you must you can call into it.
+    namespace detail {
+        /// Parser.  Implemented in Json_Parser.cpp.
+        ///
+        /// @param vout - out param.  Results are placed here
+        /// @param json - The json to parse.  It need not be wrapped in an object or an array. Even simple json items
+        ///               may be parsed.
+        /// @param backend - The backend to use.  May throw `ParserUnavailable` if backend is SimdJson and it is not
+        ///                  available.
+        /// @returns true on success, false on parse error.
+        extern bool parse(QVariant &out, const QByteArray &json, ParserBackend backend);
+    }
 }

@@ -24,7 +24,6 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 #include "Json.h"
-#include "Json_Parser.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -58,7 +57,7 @@ public:
 };
 
 
-struct BadArgs : public Json::Error {
+struct BadArgs : Json::Error {
     using Json::Error::Error;
     ~BadArgs() override;
 };
