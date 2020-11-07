@@ -289,9 +289,13 @@ void test(const QString &dir, bool useSimdJson)
         TFile t;
         if (file.startsWith("pass"))
             t.wantsFail = false;
-        else if (file.startsWith("fail"))
-            t.wantsFail = true;
-        else if (file.startsWith("round"))
+        else if (file.startsWith("fail")) {
+            if (useSimdJson) {
+                t.wantsRound = file.contains("_round_sj.");
+                t.wantsFail = !t.wantsRound && !file.contains("_pass_sj.");
+            } else
+                t.wantsFail = true;
+        } else if (file.startsWith("round"))
             t.wantsFail = false, t.wantsRound = true;
         else
             // skip unrelated json file
@@ -304,7 +308,7 @@ void test(const QString &dir, bool useSimdJson)
     const auto runTest = [parser](const TFile &t) {
         QFile f(t.path);
         auto baseName = QFileInfo(t.path).baseName();
-        if (!f.open(QFile::ReadOnly|QFile::Text))
+        if (!f.open(QFile::ReadOnly/*|QFile::Text*/))
             throw Exception(QString("Cannot open %1").arg(f.fileName()));
         const QByteArray json = f.readAll();
         QVariant var;
@@ -327,9 +331,8 @@ void test(const QString &dir, bool useSimdJson)
         }
         if (t.wantsRound) {
             if (auto json2 = toUtf8(var, true, SerOption::BareNullOk); json.trimmed() != json2.trimmed())
-                throw Exception(QString("Round-trip deser/ser failed for: %1\n\nExpected:\n%2\nHex: %3\n\nGot:\n%4\nHex: %5").arg(baseName)
-                                .arg(QString(json)).arg(QString(json.toHex()))
-                                .arg(QString(json2)).arg(QString(json2.toHex())));
+                throw Exception(QString("Round-trip deser/ser failed for: %1\n\nExpected:\n%2\nHex: %3\n\nGot:\n%4\nHex: %5")
+                                .arg(baseName, QString(json), QString(json.toHex()), QString(json2), QString(json2.toHex())));
         }
         Log() << baseName << ": passed";
     };
