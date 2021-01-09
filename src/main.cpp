@@ -1,6 +1,6 @@
 /*
 Json - A lightweight JSON parser and serializer for Qt.
-Copyright (c) 2020 Calin A. Culianu <calin.culianu@gmail.com>
+Copyright (c) 2020-2021 Calin A. Culianu <calin.culianu@gmail.com>
 
 The MIT License (MIT)
 
@@ -162,6 +162,8 @@ void bench(const QString &dir = "bench") {
     tf = getTimeSecs();
     Log() << "Qt Json parse - total: " << (tf-t0) << " secs" << " - per-iter: "
           << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
+    if (parsed != qtparsed)
+        throw Exception("Custom lib parsed and Qt parsed differ");
 
     decltype (parsed) sjparsed;
     if (isParserAvailable(ParserBackend::SimdJson)) {
@@ -180,6 +182,8 @@ void bench(const QString &dir = "bench") {
         tf = getTimeSecs();
         Log() << "simdjson Json parse - total: " << (tf-t0) << " secs" << " - per-iter: "
               << QString::asprintf("%1.16g", ((tf-t0)/iters) * 1e3) << " msec";
+        if (sjparsed != parsed)
+            throw Exception("Simdjson parsed and custom lib parsed differ");
     }
 
     Log() << "---";
