@@ -1,6 +1,6 @@
 # Json
 
-A lightweight JSON parser and serializer for Qt5 by Calin Culianu <calin.culianu@gmail.com>.
+A lightweight JSON parser and serializer for Qt5 & Qt6 by Calin Culianu <calin.culianu@gmail.com>.
 
 I initially wrote this code for use in my [Fulcrum](https://github.com/cculianu/Fulcrum) server software. Thinking it might be useful to others, I decided to also release this code as a stand-alone library.
 
@@ -12,7 +12,7 @@ I initially wrote this code for use in my [Fulcrum](https://github.com/cculianu/
 
 
 ### Key Highlights:
-- Requires C++17 and Qt5
+- Requires C++17 and Qt5 or Qt6
 - Like `QJsonDocument`, supports parsing/serialization directly to/from `QVariant`
 - Performance, parsing:
   - Default backend: comparable to Qt 5.14.x (not quite as fast on parsing, but fast enough)
